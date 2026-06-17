@@ -1,0 +1,22 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: intermediate-mongo
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-rootpass}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-productsdb}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://root:rootpass@localhost:27017/productsdb?authSource=admin}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ['CMD-SHELL', 'mongosh --quiet "$${MONGODB_URI}" --eval "db.runCommand({ ping: 1 })"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongo_data:
