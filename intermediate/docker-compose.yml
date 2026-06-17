@@ -18,5 +18,24 @@ services:
       timeout: 5s
       retries: 10
 
+  gemma-2b:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: intermediate-gemma-2b
+    restart: unless-stopped
+    command:
+      - "-hf"
+      - "bartowski/gemma-2-2b-it-GGUF:Q4_K_M"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8082"
+      - "-c"
+      - "4096"
+    ports:
+      - "8082:8082"
+    volumes:
+      - llama_cache:/root/.cache/llama.cpp
+
 volumes:
   mongo_data:
+  llama_cache:

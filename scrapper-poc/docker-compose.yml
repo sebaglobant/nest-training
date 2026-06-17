@@ -1,0 +1,78 @@
+services:
+  app:
+    build: .
+    container_name: scrapper-poc-app
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://scrapper:scrapper@postgres:5432/scrapper_poc
+      INFERENCE_URL: http://phi4-mini:8080
+      EMBEDDINGS_URL: http://embeddings:8081
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - phi4-mini
+      - embeddings
+    networks:
+      - scrapper-net
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: scrapper-poc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scrapper
+      POSTGRES_PASSWORD: scrapper
+      POSTGRES_DB: scrapper_poc
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+      - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
+    networks:
+      - scrapper-net
+
+  phi4-mini:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: scrapper-poc-phi4-mini
+    restart: unless-stopped
+    command:
+      - "-hf"
+      - "bartowski/microsoft_Phi-4-mini-instruct-GGUF:Q4_K_M"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "-c"
+      - "4096"
+    volumes:
+      - llama_cache:/root/.cache/llama.cpp
+    networks:
+      - scrapper-net
+
+  embeddings:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: scrapper-poc-embeddings
+    restart: unless-stopped
+    command:
+      - "-hf"
+      - "CompendiumLabs/bge-small-en-v1.5-gguf:Q8_0"
+      - "--embedding"
+      - "--pooling"
+      - "mean"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8081"
+      - "-c"
+      - "512"
+    volumes:
+      - llama_cache:/root/.cache/llama.cpp
+    networks:
+      - scrapper-net
+
+networks:
+  scrapper-net:
+
+volumes:
+  pgvector_data:
+  llama_cache:
