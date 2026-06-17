@@ -1,98 +1,93 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Scrapper PoC
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS training project — proof of concept for a price/availability scraper that uses a local LLM to review API/endpoint responses for incidents (e.g. empty responses, blocks), escalating new ones to Slack. Embeddings are used to vectorize each detected situation and compare it against known cases in pgvector, so repeat incidents are matched/deduped instead of re-escalated. See [constitution.md](./constitution.md) for the full goals/roadmap.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Status: infra (Docker, models, DB) wired; application logic not yet implemented (scaffold only).
 
-## Description
+## Stack
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- **Node**: 24
+- **Framework**: NestJS 11 (Express platform)
+- **Database**: PostgreSQL 16 + pgvector
+- **Package manager**: pnpm
+- **Inference model**: Phi-4-mini-instruct (3.8B, GGUF, via llama.cpp server) — reviews scraped endpoint responses, decides if something's wrong (incident review)
+- **Embedding model**: bge-small-en-v1.5 (GGUF, via llama.cpp server) — vectorizes incident descriptions for similarity match against known cases in pgvector (dedupe before escalating to Slack)
 
-## Project setup
+## Requirements
+
+- Node 24
+- pnpm
+- Docker
+
+## Setup
 
 ```bash
-$ pnpm install
+pnpm install
 ```
 
-## Compile and run the project
+## Docker services
+
+Everything — app, db, both models — runs containerized. Only the app's port is published to the host; Postgres and the two model servers are reachable only on the internal `scrapper-net` Docker network (still have internet egress for the initial HuggingFace model pull).
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+docker compose up -d
+docker compose ps
 ```
 
-## Run tests
+| Service      | Image                                            | Host port | Purpose                                  |
+|--------------|---------------------------------------------------|-----------|--------------------------------------------|
+| `app`        | built from local `Dockerfile`                      | 3000      | NestJS API (only service exposed to host)   |
+| `postgres`   | `pgvector/pgvector:pg16`                            | —         | Storage + vector search, internal only      |
+| `phi4-mini`  | `ghcr.io/ggml-org/llama.cpp:server` (`bartowski/microsoft_Phi-4-mini-instruct-GGUF:Q4_K_M`) | — | Reviews scraped responses for incidents, internal only |
+| `embeddings` | `ghcr.io/ggml-org/llama.cpp:server` (`CompendiumLabs/bge-small-en-v1.5-gguf:Q8_0`) | — | Embeds incidents for vector match against known cases, internal only |
+
+App reaches the model servers and DB via service-name DNS (`postgres:5432`, `phi4-mini:8080`, `embeddings:8081`) — see `environment` in `docker-compose.yml`.
+
+## Running the app
+
+Containerized by default (`docker compose up -d app`). For local iteration outside Docker:
 
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+pnpm run start:dev
+pnpm run build && pnpm run start:prod
 ```
 
-## Deployment
+Note: running outside Docker means pointing `INFERENCE_URL`/`EMBEDDINGS_URL`/`DATABASE_URL` at published ports instead of service names — those aren't exposed by default (see Docker services above), so either run the app in the same compose network or temporarily publish the ports you need.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## How incident review + escalation works (planned)
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+1. Scraper hits a target endpoint, gets a response (or failure/empty body/block).
+2. Response goes to `phi4-mini` for review — is this a real incident (blocked, empty, malformed) or normal?
+3. If flagged, the incident description gets embedded via `embeddings`.
+4. That vector is compared (pgvector similarity) against stored incident cases — match found = known/already-escalated case, no match = new case.
+5. New cases get inserted into pgvector and pushed to Slack; known cases are deduped/skipped (or logged without re-alerting).
 
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+# incident review (only reachable from inside the docker network, or via the app)
+curl http://phi4-mini:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"phi-4-mini","messages":[{"role":"user","content":"Review this API response and say if it indicates a block, empty result, or error: <response body>"}]}'
+
+# embed an incident description for similarity lookup
+curl http://embeddings:8081/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"input":"empty response from product listing endpoint, status 200"}'
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Endpoints
 
-## Resources
+Scaffold only — `GET /` returns a hello-world placeholder. Scraper, incident-review, and Slack-escalation endpoints from the constitution are not implemented yet.
 
-Check out a few resources that may come in handy when working with NestJS:
+## Testing
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+pnpm run test         # unit (*.spec.ts, src/)
+pnpm run test:e2e      # e2e (*.e2e-spec.ts, test/)
+```
 
-## Support
+## Lint / format
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```bash
+pnpm run lint
+pnpm run format
+```
