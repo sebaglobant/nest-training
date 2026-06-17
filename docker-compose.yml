@@ -1,3 +1,3 @@
 include:
-  - intermediate/docker-compose.yml
+  - ecommerce/docker-compose.yml
   - scrapper-poc/docker-compose.yml

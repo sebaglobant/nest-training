@@ -1,7 +1,7 @@
 services:
   mongo:
     image: mongo:7
-    container_name: intermediate-mongo
+    container_name: ecommerce-mongo
     restart: unless-stopped
     ports:
       - '27017:27017'
@@ -20,7 +20,7 @@ services:
 
   gemma-2b:
     image: ghcr.io/ggml-org/llama.cpp:server
-    container_name: intermediate-gemma-2b
+    container_name: ecommerce-gemma-2b
     restart: unless-stopped
     command:
       - "-hf"

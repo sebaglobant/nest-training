@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Stock NestJS (v11) TypeScript starter — `intermediate` module in an nestjs-training dojo repo. Currently unmodified scaffold (`AppModule` → `AppController` + `AppService`); no custom domain code yet.
+Stock NestJS (v11) TypeScript starter — `ecommerce` module in an nestjs-training dojo repo. Currently unmodified scaffold (`AppModule` → `AppController` + `AppService`); no custom domain code yet.
 
 Package manager: **pnpm** (pnpm-lock.yaml present, no package-lock.json/yarn.lock — always use pnpm, not npm/yarn).
 
